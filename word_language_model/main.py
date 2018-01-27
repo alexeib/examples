@@ -169,8 +169,10 @@ def train():
     hidden = model.init_hidden(args.batch_size)
     for batch, i in enumerate(range(0, train_data.size(0) - 1, args.bptt)):
 
+        torch.cuda.empty_cache()
+
         from memtree import print_obj_tree
-        print_obj_tree(1000000)
+        #print_obj_tree(1000000)
 
         print('Before model run: {}'.format(torch.cuda.memory_allocated() // 1024 ** 2))
         hidden, raw_loss = run_train_batch(train_data, i, hidden)
