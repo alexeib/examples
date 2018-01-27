@@ -141,6 +141,25 @@ def evaluate(data_source):
     return total_loss[0] / len(data_source)
 
 
+def run_train_batch(source, i, hidden):
+    data, targets = get_batch(source, i)
+    # Starting each batch, we detach the hidden state from how it was previously produced.
+    # If we didn't, the model would try backpropagating all the way to start of the dataset.
+    model.zero_grad()
+    output, hidden = model(data, hidden)
+    loss = criterion(output.view(-1, ntokens), targets)
+    loss.backward()
+
+    # `clip_grad_norm` helps prevent the exploding gradient problem in RNNs / LSTMs.
+    torch.nn.utils.clip_grad_norm(model.parameters(), args.clip)
+    for p in model.parameters():
+        p.data.add_(-lr, p.grad.data)
+
+    hidden = repackage_hidden(hidden)
+
+    return hidden, loss.data
+
+
 def train():
     # Turn on training mode which enables dropout.
     model.train()
@@ -149,21 +168,14 @@ def train():
     ntokens = len(corpus.dictionary)
     hidden = model.init_hidden(args.batch_size)
     for batch, i in enumerate(range(0, train_data.size(0) - 1, args.bptt)):
-        data, targets = get_batch(train_data, i)
-        # Starting each batch, we detach the hidden state from how it was previously produced.
-        # If we didn't, the model would try backpropagating all the way to start of the dataset.
-        hidden = repackage_hidden(hidden)
-        model.zero_grad()
-        output, hidden = model(data, hidden)
-        loss = criterion(output.view(-1, ntokens), targets)
-        loss.backward()
 
-        # `clip_grad_norm` helps prevent the exploding gradient problem in RNNs / LSTMs.
-        torch.nn.utils.clip_grad_norm(model.parameters(), args.clip)
-        for p in model.parameters():
-            p.data.add_(-lr, p.grad.data)
+        from memtree import print_obj_tree
+        print_obj_tree(1000000)
 
-        total_loss += loss.data
+        print('Before model run: {}'.format(torch.cuda.memory_allocated() // 1024 ** 2))
+        hidden, raw_loss = run_train_batch(train_data, i, hidden)
+        print('After model run: {}'.format(torch.cuda.memory_allocated() // 1024 ** 2))
+        total_loss += raw_loss
 
         if batch % args.log_interval == 0 and batch > 0:
             cur_loss = total_loss[0] / args.log_interval
